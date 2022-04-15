@@ -370,6 +370,18 @@ func (g *fileRowGroup) Column(i int) ColumnChunk        { return &g.columns[i] }
 func (g *fileRowGroup) SortingColumns() []SortingColumn { return g.sorting }
 func (g *fileRowGroup) Rows() Rows                      { return &rowGroupRowReader{rowGroup: g} }
 
+type fileColumnChunksByName struct{ *fileRowGroup }
+
+func (g fileColumnChunksByName) Len() int {
+	return len(g.columns)
+}
+func (g fileColumnChunksByName) Less(i, j int) bool {
+	return g.columns[i].column.Path().Less(g.columns[j].column.Path())
+}
+func (g fileColumnChunksByName) Swap(i, j int) {
+	g.columns[i], g.columns[j] = g.columns[j], g.columns[i]
+}
+
 type fileSortingColumn struct {
 	column     *Column
 	descending bool

@@ -29,10 +29,14 @@ func scanParquetFile(f *os.File) error {
 
 	p, err := parquet.OpenFile(f, s.Size())
 	if err != nil {
-		return err
+		return fmt.Errorf("opening parquet file: %w", err)
 	}
 
-	return scanParquetValues(p.Root())
+	if err := scanParquetValues(p.Root()); err != nil {
+		return fmt.Errorf("scanning parquet values: %w", err)
+	}
+
+	return nil
 }
 
 func scanParquetValues(col *parquet.Column) error {
@@ -57,11 +61,11 @@ func generateParquetFile(rows rows, options ...parquet.WriterOption) ([]byte, er
 	}, options...)
 
 	if err := writeParquetFile(tmp, rows, writerOptions...); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("writing parquet file: %w", err)
 	}
 
 	if err := scanParquetFile(tmp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading parquet file: %w", err)
 	}
 
 	return parquetTools("dump", path)
@@ -236,6 +240,97 @@ value 7:  R:0 D:0 V:1639444133
 value 8:  R:0 D:0 V:1639444137
 value 9:  R:0 D:0 V:1639444141
 value 10: R:0 D:0 V:1639444144
+
+DOUBLE value
+--------------------------------------------------------------------------------
+*** row group 1 of 1, values 1 to 10 ***
+value 1:  R:0 D:0 V:100.0
+value 2:  R:0 D:0 V:0.0
+value 3:  R:0 D:0 V:42.0
+value 4:  R:0 D:0 V:1.0
+value 5:  R:0 D:0 V:2.0
+value 6:  R:0 D:0 V:5.0
+value 7:  R:0 D:0 V:4.0
+value 8:  R:0 D:0 V:5.0
+value 9:  R:0 D:0 V:6.0
+value 10: R:0 D:0 V:10.0
+`,
+	},
+
+	{
+		scenario: "timeseries with delta encoding and explicit column layout",
+		version:  v2,
+		rows: []interface{}{
+			timeseries{Name: "http_request_total", Timestamp: 1639444033, Value: 100},
+			timeseries{Name: "http_request_total", Timestamp: 1639444058, Value: 0},
+			timeseries{Name: "http_request_total", Timestamp: 1639444085, Value: 42},
+			timeseries{Name: "http_request_total", Timestamp: 1639444093, Value: 1},
+			timeseries{Name: "http_request_total", Timestamp: 1639444101, Value: 2},
+			timeseries{Name: "http_request_total", Timestamp: 1639444108, Value: 5},
+			timeseries{Name: "http_request_total", Timestamp: 1639444133, Value: 4},
+			timeseries{Name: "http_request_total", Timestamp: 1639444137, Value: 5},
+			timeseries{Name: "http_request_total", Timestamp: 1639444141, Value: 6},
+			timeseries{Name: "http_request_total", Timestamp: 1639444144, Value: 10},
+		},
+		layout: parquet.ColumnLayout{
+			{"timestamp"},
+			{"name"},
+			{"value"},
+		},
+		dump: `row group 0
+--------------------------------------------------------------------------------
+timestamp:  INT64 UNCOMPRESSED DO:0 FPO:4 SZ:278/278/1.00 VC:10 ENC:DE [more]...
+name:       BINARY UNCOMPRESSED DO:282 FPO:323 SZ:101/101/1.00 VC:10 E [more]...
+value:      DOUBLE UNCOMPRESSED DO:0 FPO:383 SZ:220/220/1.00 VC:10 ENC:PLAIN [more]...
+
+    timestamp TV=10 RL=0 DL=0
+    ----------------------------------------------------------------------------
+    page 0:                   DLE:RLE RLE:RLE VLE:DELTA_BINARY_PACKED  [more]... VC:2
+    page 1:                   DLE:RLE RLE:RLE VLE:DELTA_BINARY_PACKED  [more]... VC:2
+    page 2:                   DLE:RLE RLE:RLE VLE:DELTA_BINARY_PACKED  [more]... VC:2
+    page 3:                   DLE:RLE RLE:RLE VLE:DELTA_BINARY_PACKED  [more]... VC:2
+    page 4:                   DLE:RLE RLE:RLE VLE:DELTA_BINARY_PACKED  [more]... VC:2
+
+    name TV=10 RL=0 DL=0 DS: 1 DE:PLAIN
+    ----------------------------------------------------------------------------
+    page 0:                   DLE:RLE RLE:RLE VLE:RLE_DICTIONARY ST:[n [more]... VC:5
+    page 1:                   DLE:RLE RLE:RLE VLE:RLE_DICTIONARY ST:[n [more]... VC:5
+
+    value TV=10 RL=0 DL=0
+    ----------------------------------------------------------------------------
+    page 0:                   DLE:RLE RLE:RLE VLE:PLAIN ST:[no stats f [more]... VC:2
+    page 1:                   DLE:RLE RLE:RLE VLE:PLAIN ST:[no stats f [more]... VC:2
+    page 2:                   DLE:RLE RLE:RLE VLE:PLAIN ST:[no stats f [more]... VC:2
+    page 3:                   DLE:RLE RLE:RLE VLE:PLAIN ST:[no stats f [more]... VC:2
+    page 4:                   DLE:RLE RLE:RLE VLE:PLAIN ST:[no stats f [more]... VC:2
+
+INT64 timestamp
+--------------------------------------------------------------------------------
+*** row group 1 of 1, values 1 to 10 ***
+value 1:  R:0 D:0 V:1639444033
+value 2:  R:0 D:0 V:1639444058
+value 3:  R:0 D:0 V:1639444085
+value 4:  R:0 D:0 V:1639444093
+value 5:  R:0 D:0 V:1639444101
+value 6:  R:0 D:0 V:1639444108
+value 7:  R:0 D:0 V:1639444133
+value 8:  R:0 D:0 V:1639444137
+value 9:  R:0 D:0 V:1639444141
+value 10: R:0 D:0 V:1639444144
+
+BINARY name
+--------------------------------------------------------------------------------
+*** row group 1 of 1, values 1 to 10 ***
+value 1:  R:0 D:0 V:http_request_total
+value 2:  R:0 D:0 V:http_request_total
+value 3:  R:0 D:0 V:http_request_total
+value 4:  R:0 D:0 V:http_request_total
+value 5:  R:0 D:0 V:http_request_total
+value 6:  R:0 D:0 V:http_request_total
+value 7:  R:0 D:0 V:http_request_total
+value 8:  R:0 D:0 V:http_request_total
+value 9:  R:0 D:0 V:http_request_total
+value 10: R:0 D:0 V:http_request_total
 
 DOUBLE value
 --------------------------------------------------------------------------------
