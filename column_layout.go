@@ -33,8 +33,8 @@ import (
 //		},
 //	)
 //
-// The root column cannot be rordered and is therefore omitted in the definition
-// of a column layout.
+// The root column cannot be reordered and is therefore omitted in the
+// definition of a column layout.
 type ColumnLayout []ColumnPath
 
 // ConfigureWriter satisfies the WriterOption interface.
