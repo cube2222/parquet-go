@@ -18,7 +18,7 @@ type ConvertError struct {
 
 // Error satisfies the error interface.
 func (e *ConvertError) Error() string {
-	return fmt.Sprintf("parquet conversion error: %s %q", e.Reason, columnPath(e.Path))
+	return fmt.Sprintf("parquet conversion error: %s %q", e.Reason, ColumnPath(e.Path))
 }
 
 // Conversion is an interface implemented by types that provide conversion of
@@ -96,12 +96,12 @@ type convertFunc func(Row, Row, levels) (Row, Row, error)
 type convertNode struct {
 	columnIndex int16
 	node        Node
-	path        columnPath
+	path        ColumnPath
 }
 
 func (c convertNode) child(name string) convertNode {
 	c.node = c.node.ChildByName(name)
-	c.path = c.path.append(name)
+	c.path = c.path.Append(name)
 	return c
 }
 

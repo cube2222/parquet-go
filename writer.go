@@ -204,6 +204,8 @@ type writer struct {
 		page   bytes.Buffer
 	}
 
+	mapping       *ColumnMapping
+	layout        columnLayout
 	columns       []*writerColumn
 	columnChunk   []format.ColumnChunk
 	columnIndex   []format.ColumnIndex
@@ -270,6 +272,9 @@ func newWriter(output io.Writer, config *WriterConfig) *writer {
 		dataPageType = format.DataPageV2
 	}
 
+	numColumns := numLeafColumnsOf(config.Schema)
+	w.columns = make([]*writerColumn, numColumns)
+
 	forEachLeafColumnOf(config.Schema, func(leaf leafColumn) {
 		encoding, compression := encodingAndCompressionOf(leaf.node)
 		dictionary := Dictionary(nil)
@@ -334,7 +339,7 @@ func newWriter(output io.Writer, config *WriterConfig) *writer {
 		c.encodings = addEncoding(c.encodings, c.page.encoding)
 		sortPageEncodings(c.encodings)
 
-		w.columns = append(w.columns, c)
+		w.columns[leaf.columnIndex] = c
 
 		if sortingIndex := searchSortingColumn(config.SortingColumns, leaf.path); sortingIndex < len(w.sortingColumns) {
 			w.sortingColumns[sortingIndex] = format.SortingColumn{
@@ -369,6 +374,15 @@ func newWriter(output io.Writer, config *WriterConfig) *writer {
 
 	for i, c := range w.columns {
 		w.columnOrders[i] = *c.columnType.ColumnOrder()
+	}
+
+	if w.layout = config.ColumnLayout.columnLayoutOf(w.columns); !w.layout.simple() {
+		w.schemaElements = config.ColumnLayout.orderedSchemaElements(w.schemaElements)
+
+		for i := range w.sortingColumns {
+			s := &w.sortingColumns[i]
+			s.ColumnIdx = int32(w.layout.translate(int16(s.ColumnIdx)))
+		}
 	}
 
 	return w
@@ -524,8 +538,8 @@ func (w *writer) writeRowGroup(rowGroupSchema *Schema, rowGroupSortingColumns []
 	}
 	fileOffset := w.writer.offset
 
-	for _, c := range w.columns {
-		if c.page.filter != nil {
+	for _, i := range w.layout {
+		if c := w.columns[i]; c.page.filter != nil {
 			c.columnChunk.MetaData.BloomFilterOffset = w.writer.offset
 			if err := c.writeBloomFilter(&w.writer); err != nil {
 				return 0, err
@@ -533,7 +547,8 @@ func (w *writer) writeRowGroup(rowGroupSchema *Schema, rowGroupSortingColumns []
 		}
 	}
 
-	for i, c := range w.columns {
+	for _, i := range w.layout {
+		c := w.columns[i]
 		w.columnIndex[i] = format.ColumnIndex(c.columnIndex.ColumnIndex())
 
 		if c.dictionary != nil {
@@ -566,13 +581,19 @@ func (w *writer) writeRowGroup(rowGroupSchema *Schema, rowGroupSortingColumns []
 		totalCompressedSize += int64(c.TotalCompressedSize)
 	}
 
+	isSimpleLayout := w.layout.simple()
 	sortingColumns := w.sortingColumns
+
 	if len(sortingColumns) == 0 && len(rowGroupSortingColumns) > 0 {
-		sortingColumns = make([]format.SortingColumn, 0, len(rowGroupSortingColumns))
+		sortingColumns = make([]format.SortingColumn, len(rowGroupSortingColumns))
 		forEachLeafColumnOf(rowGroupSchema, func(leaf leafColumn) {
 			if sortingIndex := searchSortingColumn(rowGroupSortingColumns, leaf.path); sortingIndex < len(sortingColumns) {
+				columnIndex := leaf.columnIndex
+				if !isSimpleLayout {
+					columnIndex = w.layout.translate(columnIndex)
+				}
 				sortingColumns[sortingIndex] = format.SortingColumn{
-					ColumnIdx:  int32(leaf.columnIndex),
+					ColumnIdx:  int32(columnIndex),
 					Descending: rowGroupSortingColumns[sortingIndex].Descending(),
 					NullsFirst: rowGroupSortingColumns[sortingIndex].NullsFirst(),
 				}
@@ -588,6 +609,13 @@ func (w *writer) writeRowGroup(rowGroupSchema *Schema, rowGroupSortingColumns []
 
 	offsetIndex := make([]format.OffsetIndex, len(w.offsetIndex))
 	copy(offsetIndex, w.offsetIndex)
+
+	if !isSimpleLayout {
+		sort.Sort(&orderByColumnLayout{
+			layout: append(columnLayout{}, w.layout...),
+			swap:   swappers(columns, columnIndex, offsetIndex),
+		})
+	}
 
 	w.rowGroups = append(w.rowGroups, format.RowGroup{
 		Columns:             columns,
@@ -642,7 +670,7 @@ type writerColumn struct {
 	pool  PageBufferPool
 	pages []io.ReadWriter
 
-	columnPath   columnPath
+	columnPath   ColumnPath
 	columnType   Type
 	columnIndex  ColumnIndexer
 	columnBuffer ColumnBuffer

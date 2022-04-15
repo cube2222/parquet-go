@@ -12,7 +12,7 @@ import (
 // from multiple goroutines.
 type ColumnMapping struct {
 	mapping columnMapping
-	columns [][]string
+	columns []ColumnPath
 }
 
 // ColumnIndex returns the column index of the column at the given path.
@@ -29,7 +29,7 @@ func (m *ColumnMapping) ColumnIndex(path ...string) (columnIndex int) {
 //
 // The method always returns the same slice value across calls to ColumnPaths,
 // applications should treat it as immutable.
-func (m *ColumnMapping) ColumnPaths() [][]string {
+func (m *ColumnMapping) ColumnPaths() []ColumnPath {
 	return m.columns
 }
 
@@ -40,7 +40,7 @@ func (m *ColumnMapping) String() string {
 
 	if len(m.columns) > 0 {
 		for _, path := range m.columns {
-			fmt.Fprintf(s, "\n  % 2d => %q", m.ColumnIndex(path...), columnPath(path))
+			fmt.Fprintf(s, "\n  % 2d => %q", m.ColumnIndex(path...), ColumnPath(path))
 		}
 		s.WriteByte('\n')
 	}
@@ -52,26 +52,12 @@ func (m *ColumnMapping) String() string {
 // ColumnMappingOf constructs the column mapping of the given schema.
 func ColumnMappingOf(schema Node) *ColumnMapping {
 	mapping := make(columnMappingGroup)
-	columns := make([][]string, 0, 16)
+	columns := make([]ColumnPath, 0, 16)
 
 	forEachLeafColumnOf(schema, func(leaf leafColumn) {
-		column := make([]string, len(leaf.path))
-		copy(column, leaf.path)
-		columns = append(columns, column)
-
-		group, path := mapping, leaf.path
-
-		for len(path) > 1 {
-			columnName := path[0]
-			g, ok := group[columnName].(columnMappingGroup)
-			if !ok {
-				g = make(columnMappingGroup)
-				group[columnName] = g
-			}
-			group, path = g, path[1:]
-		}
-
-		group[path[0]] = columnMappingLeaf(leaf.columnIndex)
+		path := append([]string{}, leaf.path...)
+		columns = append(columns, path)
+		mapping.insert(path, leaf.columnIndex)
 	})
 
 	return &ColumnMapping{
@@ -81,12 +67,30 @@ func ColumnMappingOf(schema Node) *ColumnMapping {
 }
 
 type columnMapping interface {
-	lookup(path columnPath) (columnIndex int16)
+	lookup(path ColumnPath) (columnIndex int16)
 }
 
 type columnMappingGroup map[string]columnMapping
 
-func (group columnMappingGroup) lookup(path columnPath) int16 {
+func (group columnMappingGroup) insert(path ColumnPath, index int16) {
+	for len(path) > 1 {
+		columnName := path[0]
+		switch child := group[columnName].(type) {
+		case columnMappingLeaf:
+			panic("BUG: duplicate inserts into column mapping for column " + columnName)
+		case columnMappingGroup:
+			group = child
+		default:
+			g := columnMappingGroup{}
+			group[columnName] = g
+			group = g
+		}
+		path = path[1:]
+	}
+	group[path[0]] = columnMappingLeaf(index)
+}
+
+func (group columnMappingGroup) lookup(path ColumnPath) int16 {
 	if len(path) > 0 {
 		c, ok := group[path[0]]
 		if ok {
@@ -98,7 +102,7 @@ func (group columnMappingGroup) lookup(path columnPath) int16 {
 
 type columnMappingLeaf int16
 
-func (leaf columnMappingLeaf) lookup(path columnPath) int16 {
+func (leaf columnMappingLeaf) lookup(path ColumnPath) int16 {
 	if len(path) == 0 {
 		return int16(leaf)
 	}

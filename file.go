@@ -376,7 +376,7 @@ type fileSortingColumn struct {
 	nullsFirst bool
 }
 
-func (s *fileSortingColumn) Path() []string   { return s.column.Path() }
+func (s *fileSortingColumn) Path() ColumnPath { return s.column.Path() }
 func (s *fileSortingColumn) Descending() bool { return s.descending }
 func (s *fileSortingColumn) NullsFirst() bool { return s.nullsFirst }
 
@@ -750,8 +750,8 @@ func (p *filePage) errStatistics(err error) error {
 	return fmt.Errorf("reading bounds of page %d from statistics in column %q: %w", p.index, p.columnPath(), err)
 }
 
-func (p *filePage) columnPath() columnPath {
-	return columnPath(p.column.Path())
+func (p *filePage) columnPath() ColumnPath {
+	return p.column.Path()
 }
 
 func (p *filePage) Column() int {
@@ -888,7 +888,7 @@ func (s *filePageValueReaderState) init(columnType Type, column *Column, codec f
 	case DataPageHeaderV2:
 		repetitionLevels, definitionLevels, err = s.initDataPageV2(h, data)
 		if err != nil {
-			return fmt.Errorf("initializing v2 reader for page of column %q: %w", columnPath(column.Path()), err)
+			return fmt.Errorf("initializing v2 reader for page of column %q: %w", column.Path(), err)
 		}
 		if h.IsCompressed(codec) {
 			s.page.compressed = makeCompressedPage(s.page.compressed, codec, data)
@@ -907,7 +907,7 @@ func (s *filePageValueReaderState) init(columnType Type, column *Column, codec f
 		}
 		repetitionLevels, definitionLevels, err = s.initDataPageV1(column, pageData)
 		if err != nil {
-			return fmt.Errorf("initializing v1 reader for page of column %q: %w", columnPath(column.Path()), err)
+			return fmt.Errorf("initializing v1 reader for page of column %q: %w", column.Path(), err)
 		}
 		pageHeader = h
 

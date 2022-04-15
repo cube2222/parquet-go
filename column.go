@@ -23,7 +23,7 @@ type Column struct {
 	file        *File
 	schema      *format.SchemaElement
 	order       *format.ColumnOrder
-	path        columnPath
+	path        ColumnPath
 	names       []string
 	columns     []*Column
 	chunks      []*format.ColumnChunk
@@ -97,7 +97,7 @@ func (c *Column) Encoding() []encoding.Encoding { return c.encoding }
 func (c *Column) Compression() []compress.Codec { return c.compression }
 
 // Path of the column in the parquet schema.
-func (c *Column) Path() []string { return c.path }
+func (c *Column) Path() ColumnPath { return c.path }
 
 // Name returns the column name.
 func (c *Column) Name() string { return c.schema.Name }
@@ -294,7 +294,7 @@ func (cl *columnLoader) open(file *File, path []string) (*Column, error) {
 		file:   file,
 		schema: &file.metadata.Schema[cl.schemaIndex],
 	}
-	c.path = c.path.append(c.schema.Name)
+	c.path = c.path.Append(c.schema.Name)
 
 	cl.schemaIndex++
 	numChildren := int(c.schema.NumChildren)

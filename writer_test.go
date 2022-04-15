@@ -42,7 +42,7 @@ func scanParquetValues(col *parquet.Column) error {
 	})
 }
 
-func generateParquetFile(dataPageVersion int, rows rows) ([]byte, error) {
+func generateParquetFile(rows rows, options ...parquet.WriterOption) ([]byte, error) {
 	tmp, err := os.CreateTemp("/tmp", "*.parquet")
 	if err != nil {
 		return nil, err
@@ -52,7 +52,11 @@ func generateParquetFile(dataPageVersion int, rows rows) ([]byte, error) {
 	defer os.Remove(path)
 	//fmt.Println(path)
 
-	if err := writeParquetFile(tmp, rows, parquet.DataPageVersion(dataPageVersion), parquet.PageBufferSize(20)); err != nil {
+	writerOptions := append([]parquet.WriterOption{
+		parquet.PageBufferSize(20),
+	}, options...)
+
+	if err := writeParquetFile(tmp, rows, writerOptions...); err != nil {
 		return nil, err
 	}
 
@@ -78,6 +82,7 @@ var writerTests = []struct {
 	scenario string
 	version  int
 	rows     []interface{}
+	layout   parquet.ColumnLayout
 	dump     string
 }{
 	{
@@ -88,14 +93,14 @@ var writerTests = []struct {
 			&firstAndLastName{FirstName: "Leia", LastName: "Skywalker"},
 			&firstAndLastName{FirstName: "Luke", LastName: "Skywalker"},
 		},
+		layout: parquet.ColumnLayout{
+			{"last_name"},
+			{"first_name"},
+		},
 		dump: `row group 0
 --------------------------------------------------------------------------------
-first_name:  BINARY ZSTD DO:4 FPO:55 SZ:90/72/0.80 VC:3 ENC:PLAIN,RLE_DICTIONARY [more]...
-last_name:   BINARY ZSTD DO:0 FPO:94 SZ:148/121/0.82 VC:3 ENC:DELTA_BYTE_ARRAY [more]...
-
-    first_name TV=3 RL=0 DL=0 DS: 3 DE:PLAIN
-    ----------------------------------------------------------------------------
-    page 0:                        DLE:RLE RLE:RLE VLE:RLE_DICTIONARY  [more]... SZ:7
+last_name:   BINARY ZSTD DO:0 FPO:4 SZ:148/121/0.82 VC:3 ENC:DELTA_BYTE_ARRAY [more]...
+first_name:  BINARY ZSTD DO:152 FPO:203 SZ:90/72/0.80 VC:3 ENC:PLAIN,R [more]...
 
     last_name TV=3 RL=0 DL=0
     ----------------------------------------------------------------------------
@@ -103,12 +108,9 @@ last_name:   BINARY ZSTD DO:0 FPO:94 SZ:148/121/0.82 VC:3 ENC:DELTA_BYTE_ARRAY [
     page 1:                        DLE:RLE RLE:RLE VLE:DELTA_BYTE_ARRAY [more]... SZ:19
     page 2:                        DLE:RLE RLE:RLE VLE:DELTA_BYTE_ARRAY [more]... SZ:19
 
-BINARY first_name
---------------------------------------------------------------------------------
-*** row group 1 of 1, values 1 to 3 ***
-value 1: R:0 D:0 V:Han
-value 2: R:0 D:0 V:Leia
-value 3: R:0 D:0 V:Luke
+    first_name TV=3 RL=0 DL=0 DS: 3 DE:PLAIN
+    ----------------------------------------------------------------------------
+    page 0:                        DLE:RLE RLE:RLE VLE:RLE_DICTIONARY  [more]... SZ:7
 
 BINARY last_name
 --------------------------------------------------------------------------------
@@ -116,6 +118,13 @@ BINARY last_name
 value 1: R:0 D:0 V:Solo
 value 2: R:0 D:0 V:Skywalker
 value 3: R:0 D:0 V:Skywalker
+
+BINARY first_name
+--------------------------------------------------------------------------------
+*** row group 1 of 1, values 1 to 3 ***
+value 1: R:0 D:0 V:Han
+value 2: R:0 D:0 V:Leia
+value 3: R:0 D:0 V:Luke
 `,
 	},
 
@@ -420,11 +429,15 @@ func TestWriter(t *testing.T) {
 		dataPageVersion := test.version
 		rows := test.rows
 		dump := test.dump
+		layout := test.layout
 
 		t.Run(test.scenario, func(t *testing.T) {
 			t.Parallel()
 
-			b, err := generateParquetFile(dataPageVersion, makeRows(rows))
+			b, err := generateParquetFile(makeRows(rows),
+				parquet.DataPageVersion(dataPageVersion),
+				layout,
+			)
 			if err != nil {
 				t.Logf("\n%s", string(b))
 				t.Fatal(err)

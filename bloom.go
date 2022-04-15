@@ -115,9 +115,9 @@ func bloomFilterHeader(filter BloomFilterColumn) (header format.BloomFilterHeade
 	return header
 }
 
-func searchBloomFilterColumn(filters []BloomFilterColumn, path columnPath) BloomFilterColumn {
+func searchBloomFilterColumn(filters []BloomFilterColumn, path ColumnPath) BloomFilterColumn {
 	for _, f := range filters {
-		if path.equal(f.Path()) {
+		if path.Equal(f.Path()) {
 			return f
 		}
 	}

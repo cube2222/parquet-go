@@ -1,5 +1,82 @@
 package parquet
 
+import "fmt"
+
+// SortingColumn represents a column by which a row group is sorted.
+type SortingColumn interface {
+	// Returns the path of the column in the row group schema, omitting the name
+	// of the root node.
+	Path() ColumnPath
+
+	// Returns true if the column will sort values in descending order.
+	Descending() bool
+
+	// Returns true if the column will put null values at the beginning.
+	NullsFirst() bool
+}
+
+// Ascending constructs a SortingColumn value which dictates to sort the column
+// at the path given as argument in ascending order.
+func Ascending(path ...string) SortingColumn { return ascending(path) }
+
+// Descending constructs a SortingColumn value which dictates to sort the column
+// at the path given as argument in descending order.
+func Descending(path ...string) SortingColumn { return descending(path) }
+
+// NullsFirst wraps the SortingColumn passed as argument so that it instructs
+// the row group to place null values first in the column.
+func NullsFirst(sortingColumn SortingColumn) SortingColumn { return nullsFirst{sortingColumn} }
+
+type ascending ColumnPath
+
+func (asc ascending) String() string   { return fmt.Sprintf("ascending(%s)", asc.Path()) }
+func (asc ascending) Path() ColumnPath { return ColumnPath(asc) }
+func (asc ascending) Descending() bool { return false }
+func (asc ascending) NullsFirst() bool { return false }
+
+type descending ColumnPath
+
+func (desc descending) String() string   { return fmt.Sprintf("descending(%s)", desc.Path()) }
+func (desc descending) Path() ColumnPath { return ColumnPath(desc) }
+func (desc descending) Descending() bool { return true }
+func (desc descending) NullsFirst() bool { return false }
+
+type nullsFirst struct{ SortingColumn }
+
+func (nf nullsFirst) String() string   { return fmt.Sprintf("nulls_first+%s", nf.SortingColumn) }
+func (nf nullsFirst) NullsFirst() bool { return true }
+
+func searchSortingColumn(sortingColumns []SortingColumn, path ColumnPath) int {
+	// There are usually a few sorting columns in a row group, so the linear
+	// scan is the fastest option and works whether the sorting column list
+	// is sorted or not. Please revisit this decision if this code path ends
+	// up being more costly than necessary.
+	for i, sorting := range sortingColumns {
+		if path.Equal(sorting.Path()) {
+			return i
+		}
+	}
+	return len(sortingColumns)
+}
+
+func sortingColumnsHavePrefix(sortingColumns, prefix []SortingColumn) bool {
+	if len(sortingColumns) < len(prefix) {
+		return false
+	}
+	for i, sortingColumn := range prefix {
+		if !sortingColumnsAreEqual(sortingColumns[i], sortingColumn) {
+			return false
+		}
+	}
+	return true
+}
+
+func sortingColumnsAreEqual(s1, s2 SortingColumn) bool {
+	path1 := s1.Path()
+	path2 := s2.Path()
+	return path1.Equal(path2) && s1.Descending() == s2.Descending() && s1.NullsFirst() == s2.NullsFirst()
+}
+
 // The SortConfig type carries configuration options used to generate sorting
 // functions.
 //

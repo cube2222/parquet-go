@@ -133,7 +133,6 @@ type WriterConfig struct {
 	CreatedBy            string
 	ColumnPageBuffers    PageBufferPool
 	ColumnIndexSizeLimit int
-	PageBufferPool       PageBufferPool
 	PageBufferSize       int
 	DataPageVersion      int
 	DataPageStatistics   bool
@@ -141,6 +140,7 @@ type WriterConfig struct {
 	Schema               *Schema
 	SortingColumns       []SortingColumn
 	BloomFilters         []BloomFilterColumn
+	ColumnLayout         ColumnLayout
 }
 
 // DefaultWriterConfig returns a new WriterConfig value initialized with the
@@ -196,6 +196,7 @@ func (c *WriterConfig) ConfigureWriter(config *WriterConfig) {
 		Schema:               coalesceSchema(c.Schema, config.Schema),
 		SortingColumns:       coalesceSortingColumns(c.SortingColumns, config.SortingColumns),
 		BloomFilters:         coalesceBloomFilters(c.BloomFilters, config.BloomFilters),
+		ColumnLayout:         coalesceColumnLayout(c.ColumnLayout, config.ColumnLayout),
 	}
 }
 
@@ -498,6 +499,13 @@ func coalesceBloomFilters(f1, f2 []BloomFilterColumn) []BloomFilterColumn {
 		return f1
 	}
 	return f2
+}
+
+func coalesceColumnLayout(l1, l2 []ColumnPath) []ColumnPath {
+	if l1 != nil {
+		return l1
+	}
+	return l2
 }
 
 func validatePositiveInt(optionName string, optionValue int) error {
