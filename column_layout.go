@@ -78,14 +78,15 @@ func (layout ColumnLayout) columnLayoutOf(columns []*writerColumn) columnLayout 
 		}
 	} else {
 		m := layout.columnMapping()
-		j := len(layout)
+		i := 0
+		explicit := columnLayout[:len(layout)]
+		implicit := columnLayout[len(layout):]
 
-		for i, c := range columns {
+		for j, c := range columns {
 			if index := m.lookup(c.columnPath); index >= 0 {
-				columnLayout[index] = int16(i)
+				explicit[index] = int16(j)
 			} else {
-				columnLayout[j] = int16(i)
-				j++
+				implicit[i] = int16(j)
 			}
 		}
 	}
@@ -138,8 +139,8 @@ func (layout ColumnLayout) orderedSchemaElements(schema []format.SchemaElement) 
 	seen := make(map[*format.SchemaElement]struct{}, len(schema))
 	i := 0
 
-	for _, sections := range [...][][]*format.SchemaElement{explicit, implicit} {
-		for _, path := range sections {
+	for _, section := range [...][][]*format.SchemaElement{explicit, implicit} {
+		for _, path := range section {
 			for _, elem := range path {
 				if elem != nil {
 					if _, skip := seen[elem]; !skip {
