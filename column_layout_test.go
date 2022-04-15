@@ -163,6 +163,29 @@ func TestColumnLayoutOrderedSchemaElements(t *testing.T) {
 				{NumChildren: 0, Name: "last_name"},
 			},
 		},
+
+		{
+			scenario: "the schema has columns that are not declared in the layout",
+			layout: ColumnLayout{
+				{"C"}, {"B"},
+			},
+			schema: []format.SchemaElement{
+				{NumChildren: 5, Name: "$"},
+				{NumChildren: 0, Name: "A"},
+				{NumChildren: 0, Name: "B"},
+				{NumChildren: 0, Name: "C"},
+				{NumChildren: 0, Name: "D"},
+				{NumChildren: 0, Name: "E"},
+			},
+			expect: []format.SchemaElement{
+				{NumChildren: 5, Name: "$"},
+				{NumChildren: 0, Name: "C"},
+				{NumChildren: 0, Name: "B"},
+				{NumChildren: 0, Name: "A"},
+				{NumChildren: 0, Name: "D"},
+				{NumChildren: 0, Name: "E"},
+			},
+		},
 	}
 
 	for _, test := range tests {
